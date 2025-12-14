@@ -1,237 +1,397 @@
 <!DOCTYPE html>
 <html lang="pl">
 <head>
-<meta charset="UTF-8">
-<title>Połącz się</title>
-
-<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
-
-<style>
-body {
-  margin: 0;
-  background: #0f0f0f;
-  color: #fff;
-  font-family: Arial, sans-serif;
-}
-
-/* EKRANY */
-#login, #app, #call {
-  display: none;
-  height: 100vh;
-}
-
-/* LOGIN */
-#login {
-  display: flex;
-  justify-content: center;
-  align-items: center;
-}
-
-/* APP */
-#top {
-  padding: 10px;
-  background: #181818;
-}
-input, button {
-  padding: 10px;
-  margin: 5px;
-  background: #222;
-  color: #fff;
-  border: none;
-}
-.user {
-  padding: 10px;
-  cursor: pointer;
-}
-.user:hover {
-  background: #222;
-}
-
-/* CALL */
-#call {
-  position: fixed;
-  inset: 0;
-  background: #000;
-  flex-direction: column;
-  align-items: center;
-}
-video {
-  width: 200px;
-  margin: 5px;
-  background: #000;
-}
-</style>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Rozmowy wideo ze znajomymi</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+        }
+        
+        .container {
+            background: white;
+            border-radius: 20px;
+            padding: 30px;
+            max-width: 900px;
+            width: 100%;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+        }
+        
+        h1 {
+            color: #667eea;
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        
+        .setup-section {
+            margin-bottom: 30px;
+        }
+        
+        .input-group {
+            margin-bottom: 20px;
+        }
+        
+        label {
+            display: block;
+            margin-bottom: 8px;
+            color: #333;
+            font-weight: 600;
+        }
+        
+        input {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid #e0e0e0;
+            border-radius: 8px;
+            font-size: 16px;
+            transition: border-color 0.3s;
+        }
+        
+        input:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+        
+        .button-group {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+        
+        button {
+            flex: 1;
+            min-width: 120px;
+            padding: 12px 24px;
+            border: none;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+        
+        .btn-primary {
+            background: #667eea;
+            color: white;
+        }
+        
+        .btn-primary:hover {
+            background: #5568d3;
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+        }
+        
+        .btn-success {
+            background: #48bb78;
+            color: white;
+        }
+        
+        .btn-success:hover {
+            background: #38a169;
+        }
+        
+        .btn-danger {
+            background: #f56565;
+            color: white;
+        }
+        
+        .btn-danger:hover {
+            background: #e53e3e;
+        }
+        
+        button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            transform: none !important;
+        }
+        
+        .video-container {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 15px;
+            margin-top: 20px;
+        }
+        
+        .video-wrapper {
+            position: relative;
+            background: #000;
+            border-radius: 12px;
+            overflow: hidden;
+            aspect-ratio: 4/3;
+        }
+        
+        video {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+        
+        .video-label {
+            position: absolute;
+            bottom: 10px;
+            left: 10px;
+            background: rgba(0,0,0,0.7);
+            color: white;
+            padding: 5px 10px;
+            border-radius: 5px;
+            font-size: 14px;
+        }
+        
+        .status {
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            text-align: center;
+        }
+        
+        .status.info {
+            background: #bee3f8;
+            color: #2c5282;
+        }
+        
+        .status.success {
+            background: #c6f6d5;
+            color: #22543d;
+        }
+        
+        .status.warning {
+            background: #feebc8;
+            color: #744210;
+        }
+        
+        .instructions {
+            background: #f7fafc;
+            padding: 20px;
+            border-radius: 8px;
+            margin-top: 20px;
+        }
+        
+        .instructions h3 {
+            color: #667eea;
+            margin-bottom: 10px;
+        }
+        
+        .instructions ol {
+            margin-left: 20px;
+            line-height: 1.8;
+        }
+        
+        @media (max-width: 768px) {
+            .video-container {
+                grid-template-columns: 1fr;
+            }
+            
+            .button-group {
+                flex-direction: column;
+            }
+            
+            button {
+                width: 100%;
+            }
+        }
+    </style>
 </head>
 <body>
+    <div class="container">
+        <h1>📞 Rozmowy ze znajomymi</h1>
+        
+        <div id="status" class="status info">
+            Witaj! Wprowadź ID pokoju, aby rozpocząć rozmowę.
+        </div>
+        
+        <div class="setup-section">
+            <div class="input-group">
+                <label for="roomId">ID pokoju (wspólne dla Ciebie i znajomych):</label>
+                <input type="text" id="roomId" placeholder="np. moj-pokoj-123">
+            </div>
+            
+            <div class="button-group">
+                <button id="startBtn" class="btn-primary">🎥 Rozpocznij rozmowę</button>
+                <button id="joinBtn" class="btn-success">🚪 Dołącz do rozmowy</button>
+                <button id="endBtn" class="btn-danger" disabled>❌ Zakończ</button>
+            </div>
+        </div>
+        
+        <div class="video-container" style="display: none;" id="videoContainer">
+            <div class="video-wrapper">
+                <video id="localVideo" autoplay muted playsinline></video>
+                <div class="video-label">Ty</div>
+            </div>
+            <div class="video-wrapper">
+                <video id="remoteVideo" autoplay playsinline></video>
+                <div class="video-label">Znajomy</div>
+            </div>
+        </div>
+        
+        <div class="instructions">
+            <h3>📋 Jak używać:</h3>
+            <ol>
+                <li>Wymyśl unikalny ID pokoju (np. "moj-pokoj-123")</li>
+                <li>Kliknij "Rozpocznij rozmowę"</li>
+                <li>Przekaż to samo ID znajomemu</li>
+                <li>Znajomy wchodzi na tę samą stronę, wpisuje ID i klika "Dołącz do rozmowy"</li>
+                <li>Rozpoczynajcie rozmowę! 🎉</li>
+            </ol>
+            <p style="margin-top: 15px;"><strong>⚠️ Uwaga:</strong> Strona działa najlepiej w Chrome/Edge. Musisz zezwolić na dostęp do kamery i mikrofonu.</p>
+        </div>
+    </div>
 
-<!-- LOGIN -->
-<div id="login">
-  <div>
-    <h2>Wpisz swój nick</h2>
-    <input id="nickInput" placeholder="Nick">
-    <button onclick="saveNick()">Wejdź</button>
-  </div>
-</div>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/peerjs/1.5.2/peerjs.min.js"></script>
+    <script>
+        let peer = null;
+        let currentCall = null;
+        let localStream = null;
 
-<!-- APP -->
-<div id="app">
-  <div id="top">
-    <input id="search" placeholder="Szukaj użytkownika" oninput="renderUsers()">
-  </div>
-  <div id="users"></div>
-</div>
+        const roomIdInput = document.getElementById('roomId');
+        const startBtn = document.getElementById('startBtn');
+        const joinBtn = document.getElementById('joinBtn');
+        const endBtn = document.getElementById('endBtn');
+        const statusDiv = document.getElementById('status');
+        const videoContainer = document.getElementById('videoContainer');
+        const localVideo = document.getElementById('localVideo');
+        const remoteVideo = document.getElementById('remoteVideo');
 
-<!-- CALL -->
-<div id="call">
-  <h2 id="callTitle"></h2>
-  <video id="remoteVideo" autoplay></video>
-  <video id="localVideo" autoplay muted></video>
-  <button onclick="hangup()">❌ Rozłącz</button>
-</div>
+        function updateStatus(message, type = 'info') {
+            statusDiv.textContent = message;
+            statusDiv.className = `status ${type}`;
+        }
 
-<script>
-/* FIREBASE */
-firebase.initializeApp({
-  apiKey: "AIzaSyD8maHB4twE8dSWnoLOgsd8FcQFMbqIUzY",
-  authDomain: "polacz-sie.firebaseapp.com",
-  projectId: "polacz-sie"
-});
-const db = firebase.firestore();
+        async function getMediaStream() {
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({ 
+                    video: true, 
+                    audio: true 
+                });
+                return stream;
+            } catch (err) {
+                updateStatus('Błąd: Nie można uzyskać dostępu do kamery/mikrofonu. Sprawdź uprawnienia.', 'warning');
+                throw err;
+            }
+        }
 
-/* GLOBAL */
-let nick = localStorage.getItem("nick");
-let pc, localStream;
-let lastUsers = null;
+        startBtn.addEventListener('click', async () => {
+            const roomId = roomIdInput.value.trim();
+            if (!roomId) {
+                updateStatus('Wprowadź ID pokoju!', 'warning');
+                return;
+            }
 
-/* START */
-window.onload = () => {
-  if (!nick) {
-    login.style.display = "flex";
-  } else {
-    startApp();
-  }
-};
+            try {
+                updateStatus('Uruchamianie kamery...', 'info');
+                localStream = await getMediaStream();
+                localVideo.srcObject = localStream;
+                videoContainer.style.display = 'grid';
 
-function saveNick() {
-  nick = nickInput.value.trim();
-  if (!nick) return;
-  localStorage.setItem("nick", nick);
-  startApp();
-}
+                peer = new Peer(roomId, {
+                    host: 'peerjs-server.herokuapp.com',
+                    secure: true,
+                    port: 443
+                });
 
-/* APP */
-function startApp() {
-  login.style.display = "none";
-  app.style.display = "block";
+                peer.on('open', (id) => {
+                    updateStatus(`✅ Pokój utworzony! ID: ${id}. Czekam na znajomego...`, 'success');
+                    startBtn.disabled = true;
+                    joinBtn.disabled = true;
+                    endBtn.disabled = false;
+                });
 
-  db.collection("users").doc(nick).set({ online: true });
+                peer.on('call', (call) => {
+                    currentCall = call;
+                    call.answer(localStream);
+                    
+                    call.on('stream', (remoteStream) => {
+                        remoteVideo.srcObject = remoteStream;
+                        updateStatus('🎉 Połączono! Rozmowa w toku...', 'success');
+                    });
+                });
 
-  db.collection("users").onSnapshot(snap => {
-    lastUsers = snap;
-    renderUsers();
-  });
+                peer.on('error', (err) => {
+                    if (err.type === 'unavailable-id') {
+                        updateStatus('To ID jest już zajęte. Użyj innego lub kliknij "Dołącz".', 'warning');
+                    } else {
+                        updateStatus(`Błąd: ${err.message}`, 'warning');
+                    }
+                });
 
-  listenForCalls();
-}
-
-/* USERS */
-function renderUsers() {
-  if (!lastUsers) return;
-  users.innerHTML = "";
-  const filter = search.value.toLowerCase();
-
-  lastUsers.forEach(doc => {
-    if (doc.id !== nick && doc.id.toLowerCase().includes(filter)) {
-      users.innerHTML += `
-        <div class="user" onclick="callUser('${doc.id}')">${doc.id}</div>
-      `;
-    }
-  });
-}
-
-/* CALL */
-async function callUser(target) {
-  showCall(target);
-
-  pc = new RTCPeerConnection({
-    iceServers: [{ urls: "stun:stun.l.google.com:19302" }]
-  });
-
-  localStream = await navigator.mediaDevices.getUserMedia({ audio: true });
-  localStream.getTracks().forEach(t => pc.addTrack(t, localStream));
-
-  pc.ontrack = e => remoteVideo.srcObject = e.streams[0];
-
-  const callDoc = db.collection("calls").doc();
-
-  pc.onicecandidate = e => {
-    if (e.candidate)
-      callDoc.collection("caller").add(e.candidate.toJSON());
-  };
-
-  const offer = await pc.createOffer();
-  await pc.setLocalDescription(offer);
-
-  await callDoc.set({ from: nick, to: target, offer });
-
-  callDoc.onSnapshot(d => {
-    if (d.data()?.answer)
-      pc.setRemoteDescription(d.data().answer);
-  });
-
-  callDoc.collection("callee").onSnapshot(s => {
-    s.docChanges().forEach(c =>
-      pc.addIceCandidate(new RTCIceCandidate(c.doc.data()))
-    );
-  });
-}
-
-function listenForCalls() {
-  db.collection("calls").where("to", "==", nick)
-    .onSnapshot(snap => {
-      snap.docChanges().forEach(async c => {
-        const data = c.doc.data();
-        showCall(data.from);
-
-        pc = new RTCPeerConnection({
-          iceServers: [{ urls: "stun:stun.l.google.com:19302" }]
+            } catch (err) {
+                console.error(err);
+            }
         });
 
-        localStream = await navigator.mediaDevices.getUserMedia({ audio: true });
-        localStream.getTracks().forEach(t => pc.addTrack(t, localStream));
+        joinBtn.addEventListener('click', async () => {
+            const roomId = roomIdInput.value.trim();
+            if (!roomId) {
+                updateStatus('Wprowadź ID pokoju!', 'warning');
+                return;
+            }
 
-        pc.ontrack = e => remoteVideo.srcObject = e.streams[0];
+            try {
+                updateStatus('Uruchamianie kamery...', 'info');
+                localStream = await getMediaStream();
+                localVideo.srcObject = localStream;
+                videoContainer.style.display = 'grid';
 
-        pc.onicecandidate = e => {
-          if (e.candidate)
-            c.doc.ref.collection("callee").add(e.candidate.toJSON());
-        };
+                peer = new Peer();
 
-        await pc.setRemoteDescription(data.offer);
-        const answer = await pc.createAnswer();
-        await pc.setLocalDescription(answer);
-        await c.doc.ref.update({ answer });
+                peer.on('open', (id) => {
+                    updateStatus('Łączenie z pokojem...', 'info');
+                    
+                    const call = peer.call(roomId, localStream);
+                    currentCall = call;
 
-        c.doc.ref.collection("caller").onSnapshot(s =>
-          s.docChanges().forEach(i =>
-            pc.addIceCandidate(new RTCIceCandidate(i.doc.data()))
-          )
-        );
-      });
-    });
-}
+                    call.on('stream', (remoteStream) => {
+                        remoteVideo.srcObject = remoteStream;
+                        updateStatus('🎉 Połączono! Rozmowa w toku...', 'success');
+                    });
 
-function showCall(other) {
-  app.style.display = "none";
-  call.style.display = "flex";
-  callTitle.innerText = "Rozmowa z " + other;
-}
+                    call.on('error', (err) => {
+                        updateStatus('Nie można połączyć. Sprawdź ID pokoju.', 'warning');
+                    });
 
-function hangup() {
-  if (pc) pc.close();
-  location.reload();
-}
-</script>
+                    startBtn.disabled = true;
+                    joinBtn.disabled = true;
+                    endBtn.disabled = false;
+                });
+
+            } catch (err) {
+                console.error(err);
+            }
+        });
+
+        endBtn.addEventListener('click', () => {
+            if (currentCall) {
+                currentCall.close();
+            }
+            if (peer) {
+                peer.destroy();
+            }
+            if (localStream) {
+                localStream.getTracks().forEach(track => track.stop());
+            }
+            
+            localVideo.srcObject = null;
+            remoteVideo.srcObject = null;
+            videoContainer.style.display = 'none';
+            
+            startBtn.disabled = false;
+            joinBtn.disabled = false;
+            endBtn.disabled = true;
+            
+            updateStatus('Rozmowa zakończona.', 'info');
+        });
+    </script>
 </body>
 </html>
