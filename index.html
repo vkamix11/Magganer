@@ -252,6 +252,112 @@
         .control-btn.end-call:hover {
             background: #dc2626;
         }
+
+        .control-btn.settings {
+            background: rgba(100, 116, 139, 0.9);
+        }
+
+        .control-btn.settings:hover {
+            background: rgba(71, 85, 105, 0.9);
+        }
+
+        .settings-modal {
+            position: absolute;
+            bottom: 200px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: #1a2332;
+            border-radius: 16px;
+            padding: 24px;
+            width: 90%;
+            max-width: 400px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.6);
+            z-index: 100;
+            display: none;
+            max-height: 70vh;
+            overflow-y: auto;
+        }
+
+        .settings-modal.show {
+            display: block;
+        }
+
+        .settings-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+
+        .settings-title {
+            font-size: 20px;
+            font-weight: 600;
+            color: white;
+        }
+
+        .settings-close {
+            background: none;
+            border: none;
+            color: #9ca3af;
+            font-size: 24px;
+            cursor: pointer;
+            padding: 0;
+            width: 32px;
+            height: 32px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .settings-close:hover {
+            color: white;
+        }
+
+        .settings-group {
+            margin-bottom: 20px;
+        }
+
+        .settings-label {
+            display: block;
+            color: #9ca3af;
+            font-size: 14px;
+            margin-bottom: 8px;
+            font-weight: 500;
+        }
+
+        .settings-select {
+            width: 100%;
+            padding: 12px;
+            background: #0a1929;
+            border: 2px solid #2d3748;
+            border-radius: 8px;
+            color: white;
+            font-size: 16px;
+            cursor: pointer;
+            transition: border-color 0.2s;
+        }
+
+        .settings-select:focus {
+            outline: none;
+            border-color: #0084ff;
+        }
+
+        .settings-select option {
+            background: #1a2332;
+            color: white;
+        }
+
+        .settings-info {
+            font-size: 12px;
+            color: #6b7280;
+            margin-top: 4px;
+        }
+
+        .settings-divider {
+            height: 1px;
+            background: #2d3748;
+            margin: 20px 0;
+        }
         
         .status-bar {
             position: absolute;
@@ -532,9 +638,63 @@
                     <button class="control-btn" id="toggleCamBtn" title="Wyłącz kamerę">
                         📹
                     </button>
+                    <button class="control-btn settings" id="settingsBtn" title="Ustawienia">
+                        ⚙️
+                    </button>
                     <button class="control-btn end-call" id="endCallBtn" title="Zakończ">
                         ✖️
                     </button>
+                </div>
+
+                <div class="settings-modal" id="settingsModal">
+                    <div class="settings-header">
+                        <div class="settings-title">⚙️ Ustawienia rozmowy</div>
+                        <button class="settings-close" id="settingsCloseBtn">×</button>
+                    </div>
+
+                    <div class="settings-group">
+                        <label class="settings-label">Jakość wideo</label>
+                        <select class="settings-select" id="qualitySelect">
+                            <option value="auto">Auto (zalecane)</option>
+                            <option value="1080p">1080p (Full HD)</option>
+                            <option value="720p">720p (HD)</option>
+                            <option value="480p">480p (SD)</option>
+                            <option value="360p">360p (Low)</option>
+                        </select>
+                        <div class="settings-info">Wyższa jakość = więcej danych</div>
+                    </div>
+
+                    <div class="settings-group">
+                        <label class="settings-label">Klatki na sekundę (FPS)</label>
+                        <select class="settings-select" id="fpsSelect">
+                            <option value="auto">Auto (zalecane)</option>
+                            <option value="60">60 FPS (Płynne)</option>
+                            <option value="30">30 FPS (Standard)</option>
+                            <option value="15">15 FPS (Oszczędne)</option>
+                        </select>
+                        <div class="settings-info">Więcej FPS = płynniejszy obraz</div>
+                    </div>
+
+                    <div class="settings-group">
+                        <label class="settings-label">Bitrate wideo</label>
+                        <select class="settings-select" id="bitrateSelect">
+                            <option value="auto">Auto (zalecane)</option>
+                            <option value="2500">2.5 Mbps (Wysoki)</option>
+                            <option value="1500">1.5 Mbps (Średni)</option>
+                            <option value="800">800 Kbps (Niski)</option>
+                            <option value="500">500 Kbps (Bardzo niski)</option>
+                        </select>
+                        <div class="settings-info">Wyższy bitrate = lepsza jakość</div>
+                    </div>
+
+                    <div class="settings-divider"></div>
+
+                    <div class="settings-group">
+                        <label class="settings-label">Informacje o połączeniu</label>
+                        <div style="background: #0a1929; padding: 12px; border-radius: 8px; font-size: 14px; color: #9ca3af;">
+                            <div id="connectionInfo">Łączenie...</div>
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>
@@ -553,6 +713,11 @@
         let dataConnection = null;
         let lastCameraRequestTime = 0;
         const CAMERA_REQUEST_COOLDOWN = 5 * 60 * 1000;
+
+        // Ustawienia jakości
+        let videoQuality = 'auto';
+        let videoFPS = 'auto';
+        let videoBitrate = 'auto';
 
         const roomIdInput = document.getElementById('roomId');
         const startBtn = document.getElementById('startBtn');
@@ -575,6 +740,13 @@
         const cameraRequestModal = document.getElementById('cameraRequestModal');
         const acceptCameraBtn = document.getElementById('acceptCameraBtn');
         const declineCameraBtn = document.getElementById('declineCameraBtn');
+        const settingsBtn = document.getElementById('settingsBtn');
+        const settingsModal = document.getElementById('settingsModal');
+        const settingsCloseBtn = document.getElementById('settingsCloseBtn');
+        const qualitySelect = document.getElementById('qualitySelect');
+        const fpsSelect = document.getElementById('fpsSelect');
+        const bitrateSelect = document.getElementById('bitrateSelect');
+        const connectionInfo = document.getElementById('connectionInfo');
 
         function showStatus(message, type = 'connecting') {
             statusBar.textContent = message;
@@ -588,8 +760,29 @@
 
         async function getMediaStream() {
             try {
+                // Konfiguracja jakości wideo
+                let videoConstraints = { facingMode: 'user' };
+                
+                if (videoQuality !== 'auto') {
+                    const qualitySettings = {
+                        '1080p': { width: 1920, height: 1080 },
+                        '720p': { width: 1280, height: 720 },
+                        '480p': { width: 854, height: 480 },
+                        '360p': { width: 640, height: 360 }
+                    };
+                    videoConstraints = {
+                        ...videoConstraints,
+                        width: { ideal: qualitySettings[videoQuality].width },
+                        height: { ideal: qualitySettings[videoQuality].height }
+                    };
+                }
+
+                if (videoFPS !== 'auto') {
+                    videoConstraints.frameRate = { ideal: parseInt(videoFPS) };
+                }
+
                 const stream = await navigator.mediaDevices.getUserMedia({ 
-                    video: true, 
+                    video: videoConstraints,
                     audio: {
                         echoCancellation: true,
                         noiseSuppression: true,
@@ -648,9 +841,30 @@
                 path: '/',
                 config: {
                     iceServers: [
+                        // Serwery STUN (Google)
                         { urls: 'stun:stun.l.google.com:19302' },
-                        { urls: 'stun:stun1.l.google.com:19302' }
-                    ]
+                        { urls: 'stun:stun1.l.google.com:19302' },
+                        { urls: 'stun:stun2.l.google.com:19302' },
+                        { urls: 'stun:stun3.l.google.com:19302' },
+                        { urls: 'stun:stun4.l.google.com:19302' },
+                        // Publiczne serwery TURN (dla lepszej stabilności)
+                        {
+                            urls: 'turn:openrelay.metered.ca:80',
+                            username: 'openrelayproject',
+                            credential: 'openrelayproject'
+                        },
+                        {
+                            urls: 'turn:openrelay.metered.ca:443',
+                            username: 'openrelayproject',
+                            credential: 'openrelayproject'
+                        },
+                        {
+                            urls: 'turn:openrelay.metered.ca:443?transport=tcp',
+                            username: 'openrelayproject',
+                            credential: 'openrelayproject'
+                        }
+                    ],
+                    sdpSemantics: 'unified-plan'
                 },
                 debug: 2
             };
@@ -758,6 +972,81 @@
             cameraRequestModal.classList.remove('show');
         });
 
+        settingsBtn.addEventListener('click', () => {
+            settingsModal.classList.toggle('show');
+            if (settingsModal.classList.contains('show')) {
+                updateConnectionInfo();
+            }
+        });
+
+        settingsCloseBtn.addEventListener('click', () => {
+            settingsModal.classList.remove('show');
+        });
+
+        qualitySelect.addEventListener('change', async (e) => {
+            videoQuality = e.target.value;
+            showStatus('Restartowanie kamery...', 'connecting');
+            
+            if (localStream) {
+                localStream.getTracks().forEach(track => track.stop());
+            }
+            if (processedStream) {
+                processedStream.getTracks().forEach(track => track.stop());
+            }
+            if (audioContext) {
+                audioContext.close();
+            }
+
+            localStream = await getMediaStream();
+            localVideo.srcObject = localStream;
+
+            if (currentCall) {
+                const videoTrack = processedStream.getVideoTracks()[0];
+                const sender = currentCall.peerConnection.getSenders().find(s => s.track && s.track.kind === 'video');
+                if (sender) {
+                    sender.replaceTrack(videoTrack);
+                }
+            }
+
+            showStatus('Jakość zaktualizowana', 'connected');
+        });
+
+        fpsSelect.addEventListener('change', async (e) => {
+            videoFPS = e.target.value;
+            showStatus('Restartowanie kamery...', 'connecting');
+            
+            if (localStream) {
+                localStream.getTracks().forEach(track => track.stop());
+            }
+            if (processedStream) {
+                processedStream.getTracks().forEach(track => track.stop());
+            }
+            if (audioContext) {
+                audioContext.close();
+            }
+
+            localStream = await getMediaStream();
+            localVideo.srcObject = localStream;
+
+            if (currentCall) {
+                const videoTrack = processedStream.getVideoTracks()[0];
+                const sender = currentCall.peerConnection.getSenders().find(s => s.track && s.track.kind === 'video');
+                if (sender) {
+                    sender.replaceTrack(videoTrack);
+                }
+            }
+
+            showStatus('FPS zaktualizowane', 'connected');
+        });
+
+        bitrateSelect.addEventListener('change', (e) => {
+            videoBitrate = e.target.value;
+            if (currentCall) {
+                applyBitrateLimit(currentCall);
+                showStatus('Bitrate zaktualizowany', 'connected');
+            }
+        });
+
         function setupDataConnection(conn) {
             dataConnection = conn;
             
@@ -775,6 +1064,42 @@
 
             conn.on('open', () => {
                 updateCameraStatus();
+                updateConnectionInfo();
+            });
+        }
+
+        function updateConnectionInfo() {
+            if (currentCall && currentCall.peerConnection) {
+                currentCall.peerConnection.getStats().then(stats => {
+                    let info = [];
+                    stats.forEach(stat => {
+                        if (stat.type === 'candidate-pair' && stat.state === 'succeeded') {
+                            info.push(`Typ: ${stat.currentRoundTripTime ? 'Połączenie aktywne' : 'Łączenie...'}`);
+                            if (stat.currentRoundTripTime) {
+                                info.push(`Ping: ${Math.round(stat.currentRoundTripTime * 1000)}ms`);
+                            }
+                        }
+                    });
+                    if (info.length > 0) {
+                        connectionInfo.innerHTML = info.join('<br>');
+                    }
+                });
+            }
+        }
+
+        function applyBitrateLimit(call) {
+            if (videoBitrate === 'auto' || !call || !call.peerConnection) return;
+
+            const sender = call.peerConnection.getSenders().find(s => s.track && s.track.kind === 'video');
+            if (!sender) return;
+
+            const parameters = sender.getParameters();
+            if (!parameters.encodings) parameters.encodings = [{}];
+            
+            parameters.encodings[0].maxBitrate = parseInt(videoBitrate) * 1000;
+            
+            sender.setParameters(parameters).catch(err => {
+                console.error('Błąd ustawiania bitrate:', err);
             });
         }
 
@@ -811,6 +1136,8 @@
                     call.on('stream', (remoteStream) => {
                         remoteVideo.srcObject = remoteStream;
                         showStatus('Połączono', 'connected');
+                        applyBitrateLimit(call);
+                        setInterval(() => updateConnectionInfo(), 2000);
                     });
 
                     call.on('close', () => {
@@ -856,7 +1183,7 @@
                 switchToCallScreen();
 
                 showStatus('Łączenie...', 'connecting');
-                peer = createPeer();
+      peer = createPeer();
 
                 peer.on('open', (id) => {
                     const conn = peer.connect(roomId);
@@ -875,6 +1202,8 @@
                         call.on('stream', (remoteStream) => {
                             remoteVideo.srcObject = remoteStream;
                             showStatus('Połączono', 'connected');
+                            applyBitrateLimit(call);
+                            setInterval(() => updateConnectionInfo(), 2000);
                         });
 
                         call.on('close', () => {
@@ -964,7 +1293,15 @@
             localCameraOff.classList.remove('show');
             remoteCameraOff.classList.remove('show');
             cameraRequestModal.classList.remove('show');
+            settingsModal.classList.remove('show');
             requestCameraBtn.disabled = false;
+            
+            videoQuality = 'auto';
+            videoFPS = 'auto';
+            videoBitrate = 'auto';
+            qualitySelect.value = 'auto';
+            fpsSelect.value = 'auto';
+            bitrateSelect.value = 'auto';
             
             if (!remoteContainer.parentElement || remoteContainer.parentElement.id !== 'videoMain') {
                 videoMain.innerHTML = '';
