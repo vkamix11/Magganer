@@ -550,7 +550,7 @@
         let isLocalMain = false;
         let dataConnection = null;
         let lastCameraRequestTime = 0;
-        const CAMERA_REQUEST_COOLDOWN = 5 * 60 * 1000; // 5 minut
+        const CAMERA_REQUEST_COOLDOWN = 5 * 60 * 1000;
 
         const roomIdInput = document.getElementById('roomId');
         const startBtn = document.getElementById('startBtn');
@@ -666,4 +666,270 @@
         toggleMicBtn.addEventListener('click', () => {
             if (localStream) {
                 isMicEnabled = !isMicEnabled;
-                localStream.getAudioTracks().forEach
+                localStream.getAudioTracks().forEach(track => {
+                    track.enabled = isMicEnabled;
+                });
+                toggleMicBtn.classList.toggle('active', !isMicEnabled);
+                toggleMicBtn.textContent = isMicEnabled ? '🎤' : '🔇';
+            }
+        });
+
+        toggleCamBtn.addEventListener('click', () => {
+            if (localStream) {
+                isCamEnabled = !isCamEnabled;
+                localStream.getVideoTracks().forEach(track => {
+                    track.enabled = isCamEnabled;
+                });
+                toggleCamBtn.classList.toggle('active', !isCamEnabled);
+                toggleCamBtn.textContent = isCamEnabled ? '📹' : '📷';
+                updateCameraStatus();
+            }
+        });
+
+        requestCameraBtn.addEventListener('click', () => {
+            const now = Date.now();
+            if (now - lastCameraRequestTime < CAMERA_REQUEST_COOLDOWN) {
+                const remainingTime = Math.ceil((CAMERA_REQUEST_COOLDOWN - (now - lastCameraRequestTime)) / 1000 / 60);
+                showStatus(`Poczekaj jeszcze ${remainingTime} min`, 'connecting');
+                return;
+            }
+            
+            lastCameraRequestTime = now;
+            sendDataMessage('camera-request', {});
+            showStatus('Wysłano prośbę o kamerę', 'connected');
+            requestCameraBtn.disabled = true;
+            
+            setTimeout(() => {
+                requestCameraBtn.disabled = false;
+            }, CAMERA_REQUEST_COOLDOWN);
+        });
+
+        acceptCameraBtn.addEventListener('click', () => {
+            cameraRequestModal.classList.remove('show');
+            if (!isCamEnabled) {
+                toggleCamBtn.click();
+            }
+        });
+
+        declineCameraBtn.addEventListener('click', () => {
+            cameraRequestModal.classList.remove('show');
+        });
+
+        function setupDataConnection(conn) {
+            dataConnection = conn;
+            
+            conn.on('data', (data) => {
+                if (data.type === 'camera-status') {
+                    if (data.data.enabled) {
+                        remoteCameraOff.classList.remove('show');
+                    } else {
+                        remoteCameraOff.classList.add('show');
+                    }
+                } else if (data.type === 'camera-request') {
+                    cameraRequestModal.classList.add('show');
+                }
+            });
+
+            conn.on('open', () => {
+                updateCameraStatus();
+            });
+        }
+
+        startBtn.addEventListener('click', async () => {
+            const roomId = roomIdInput.value.trim();
+            if (!roomId) {
+                roomIdInput.focus();
+                return;
+            }
+
+            try {
+                showStatus('Uruchamianie kamery...', 'connecting');
+                localStream = await getMediaStream();
+                localVideo.srcObject = localStream;
+                switchToCallScreen();
+
+                showStatus('Tworzenie pokoju...', 'connecting');
+                peer = createPeer(roomId);
+
+                peer.on('open', (id) => {
+                    showStatus('Oczekiwanie na drugą osobę...', 'connected');
+                    startBtn.disabled = true;
+                    joinBtn.disabled = true;
+                });
+
+                peer.on('connection', (conn) => {
+                    setupDataConnection(conn);
+                });
+
+                peer.on('call', (call) => {
+                    currentCall = call;
+                    call.answer(localStream);
+                    
+                    call.on('stream', (remoteStream) => {
+                        remoteVideo.srcObject = remoteStream;
+                        showStatus('Połączono', 'connected');
+                    });
+
+                    call.on('close', () => {
+                        showStatus('Rozmówca rozłączył się', 'connecting');
+                        remoteVideo.srcObject = null;
+                    });
+                });
+
+                peer.on('error', (err) => {
+                    console.error('Peer error:', err);
+                    if (err.type === 'unavailable-id') {
+                        showStatus('To ID jest zajęte', 'connecting');
+                    } else {
+                        showStatus('Błąd połączenia', 'connecting');
+                    }
+                });
+
+                peer.on('disconnected', () => {
+                    showStatus('Rozłączono z serwerem...', 'connecting');
+                    setTimeout(() => {
+                        if (peer && !peer.destroyed) {
+                            peer.reconnect();
+                        }
+                    }, 1000);
+                });
+
+            } catch (err) {
+                console.error(err);
+            }
+        });
+
+        joinBtn.addEventListener('click', async () => {
+            const roomId = roomIdInput.value.trim();
+            if (!roomId) {
+                roomIdInput.focus();
+                return;
+            }
+
+            try {
+                showStatus('Uruchamianie kamery...', 'connecting');
+                localStream = await getMediaStream();
+                localVideo.srcObject = localStream;
+                switchToCallScreen();
+
+                showStatus('Łączenie...', 'connecting');
+                peer = createPeer();
+
+                peer.on('open', (id) => {
+                    const conn = peer.connect(roomId);
+                    setupDataConnection(conn);
+
+                    setTimeout(() => {
+                        const call = peer.call(roomId, localStream);
+                        
+                        if (!call) {
+                            showStatus('Pokój nie istnieje', 'connecting');
+                            return;
+                        }
+
+                        currentCall = call;
+
+                        call.on('stream', (remoteStream) => {
+                            remoteVideo.srcObject = remoteStream;
+                            showStatus('Połączono', 'connected');
+                        });
+
+                        call.on('close', () => {
+                            showStatus('Rozmowa zakończona', 'connecting');
+                            remoteVideo.srcObject = null;
+                        });
+
+                        call.on('error', (err) => {
+                            console.error('Call error:', err);
+                            showStatus('Błąd połączenia', 'connecting');
+                        });
+                    }, 1000);
+
+                    startBtn.disabled = true;
+                    joinBtn.disabled = true;
+                });
+
+                peer.on('connection', (conn) => {
+                    setupDataConnection(conn);
+                });
+
+                peer.on('error', (err) => {
+                    console.error('Peer error:', err);
+                    if (err.type === 'peer-unavailable') {
+                        showStatus('Nie znaleziono pokoju', 'connecting');
+                    } else {
+                        showStatus('Błąd połączenia', 'connecting');
+                    }
+                });
+
+                peer.on('disconnected', () => {
+                    showStatus('Rozłączono z serwerem...', 'connecting');
+                    setTimeout(() => {
+                        if (peer && !peer.destroyed) {
+                            peer.reconnect();
+                        }
+                    }, 1000);
+                });
+
+            } catch (err) {
+                console.error(err);
+            }
+        });
+
+        endCallBtn.addEventListener('click', () => {
+            if (currentCall) {
+                currentCall.close();
+            }
+            if (dataConnection) {
+                dataConnection.close();
+            }
+            if (peer) {
+                peer.destroy();
+            }
+            if (localStream) {
+                localStream.getTracks().forEach(track => track.stop());
+            }
+            
+            localVideo.srcObject = null;
+            remoteVideo.srcObject = null;
+            
+            startBtn.disabled = false;
+            joinBtn.disabled = false;
+            
+            peer = null;
+            currentCall = null;
+            localStream = null;
+            dataConnection = null;
+            isMicEnabled = true;
+            isCamEnabled = true;
+            isLocalMain = false;
+            lastCameraRequestTime = 0;
+            
+            toggleMicBtn.classList.remove('active');
+            toggleCamBtn.classList.remove('active');
+            toggleMicBtn.textContent = '🎤';
+            toggleCamBtn.textContent = '📹';
+            
+            localCameraOff.classList.remove('show');
+            remoteCameraOff.classList.remove('show');
+            cameraRequestModal.classList.remove('show');
+            requestCameraBtn.disabled = false;
+            
+            if (!remoteContainer.parentElement || remoteContainer.parentElement.id !== 'videoMain') {
+                videoMain.innerHTML = '';
+                videoMain.appendChild(remoteContainer);
+                videoPip.innerHTML = '';
+                videoPip.appendChild(localContainer);
+            }
+            
+            switchToSetupScreen();
+        });
+
+        roomIdInput.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
+                startBtn.click();
+            }
+        });
+    </script>
+</body>
+</html>
