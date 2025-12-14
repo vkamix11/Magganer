@@ -921,26 +921,42 @@
         }
 
         toggleMicBtn.addEventListener('click', () => {
+            isMicEnabled = !isMicEnabled;
+            
+            // Wyłączamy/włączamy zarówno oryginalny jak i przetworzony stream
+            if (localStream) {
+                localStream.getAudioTracks().forEach(track => {
+                    track.enabled = isMicEnabled;
+                });
+            }
             if (processedStream) {
-                isMicEnabled = !isMicEnabled;
                 processedStream.getAudioTracks().forEach(track => {
                     track.enabled = isMicEnabled;
                 });
-                toggleMicBtn.classList.toggle('active', !isMicEnabled);
-                toggleMicBtn.textContent = isMicEnabled ? '🎤' : '🔇';
             }
+            
+            toggleMicBtn.classList.toggle('active', !isMicEnabled);
+            toggleMicBtn.textContent = isMicEnabled ? '🎤' : '🔇';
         });
 
         toggleCamBtn.addEventListener('click', () => {
+            isCamEnabled = !isCamEnabled;
+            
+            // Wyłączamy/włączamy zarówno oryginalny jak i przetworzony stream
+            if (localStream) {
+                localStream.getVideoTracks().forEach(track => {
+                    track.enabled = isCamEnabled;
+                });
+            }
             if (processedStream) {
-                isCamEnabled = !isCamEnabled;
                 processedStream.getVideoTracks().forEach(track => {
                     track.enabled = isCamEnabled;
                 });
-                toggleCamBtn.classList.toggle('active', !isCamEnabled);
-                toggleCamBtn.textContent = isCamEnabled ? '📹' : '📷';
-                updateCameraStatus();
             }
+            
+            toggleCamBtn.classList.toggle('active', !isCamEnabled);
+            toggleCamBtn.textContent = isCamEnabled ? '📹' : '📷';
+            updateCameraStatus();
         });
 
         requestCameraBtn.addEventListener('click', () => {
@@ -1163,8 +1179,7 @@
                         }
                     }, 1000);
                 });
-
-            } catch (err) {
+        } catch (err) {
                 console.error(err);
             }
         });
@@ -1183,7 +1198,7 @@
                 switchToCallScreen();
 
                 showStatus('Łączenie...', 'connecting');
-      peer = createPeer();
+                peer = createPeer();
 
                 peer.on('open', (id) => {
                     const conn = peer.connect(roomId);
