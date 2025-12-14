@@ -14,14 +14,24 @@ body {
   color: #fff;
   font-family: Arial, sans-serif;
 }
+
+/* EKRANY */
 #login, #app, #call {
   display: none;
   height: 100vh;
 }
+
+/* LOGIN */
 #login {
   display: flex;
   justify-content: center;
   align-items: center;
+}
+
+/* APP */
+#top {
+  padding: 10px;
+  background: #181818;
 }
 input, button {
   padding: 10px;
@@ -30,22 +40,19 @@ input, button {
   color: #fff;
   border: none;
 }
-#top {
-  padding: 10px;
-  background: #181818;
-}
-#users .user {
+.user {
   padding: 10px;
   cursor: pointer;
 }
-#users .user:hover {
+.user:hover {
   background: #222;
 }
+
+/* CALL */
 #call {
   position: fixed;
   inset: 0;
   background: #000;
-  display: flex;
   flex-direction: column;
   align-items: center;
 }
@@ -54,9 +61,6 @@ video {
   margin: 5px;
   background: #000;
 }
-.controls button {
-  font-size: 18px;
-}
 </style>
 </head>
 <body>
@@ -64,9 +68,9 @@ video {
 <!-- LOGIN -->
 <div id="login">
   <div>
-    <h2>Wpisz nick</h2>
-    <input id="nickInput" autocomplete="off">
-    <button onclick="saveNick()">OK</button>
+    <h2>Wpisz swój nick</h2>
+    <input id="nickInput" placeholder="Nick">
+    <button onclick="saveNick()">Wejdź</button>
   </div>
 </div>
 
@@ -83,39 +87,31 @@ video {
   <h2 id="callTitle"></h2>
   <video id="remoteVideo" autoplay></video>
   <video id="localVideo" autoplay muted></video>
-  <div class="controls">
-    <button onclick="toggleMic()">🎙</button>
-    <button onclick="toggleCam()">🎥</button>
-    <button onclick="hangup()">❌</button>
-  </div>
+  <button onclick="hangup()">❌ Rozłącz</button>
 </div>
 
 <script>
-/* 🔥 FIREBASE CONFIG – TWÓJ */
-const firebaseConfig = {
+/* FIREBASE */
+firebase.initializeApp({
   apiKey: "AIzaSyD8maHB4twE8dSWnoLOgsd8FcQFMbqIUzY",
   authDomain: "polacz-sie.firebaseapp.com",
-  projectId: "polacz-sie",
-  storageBucket: "polacz-sie.firebasestorage.app",
-  messagingSenderId: "756629905088",
-  appId: "1:756629905088:web:895b85e6907fee29edd725",
-  measurementId: "G-NDQFJT98QQ"
-};
-
-firebase.initializeApp(firebaseConfig);
+  projectId: "polacz-sie"
+});
 const db = firebase.firestore();
 
-/* GLOBALS */
+/* GLOBAL */
 let nick = localStorage.getItem("nick");
-let pc, localStream, camStream;
-let currentCall = null;
+let pc, localStream;
+let lastUsers = null;
 
 /* START */
-if (!nick) {
-  login.style.display = "flex";
-} else {
-  startApp();
-}
+window.onload = () => {
+  if (!nick) {
+    login.style.display = "flex";
+  } else {
+    startApp();
+  }
+};
 
 function saveNick() {
   nick = nickInput.value.trim();
@@ -124,154 +120,117 @@ function saveNick() {
   startApp();
 }
 
+/* APP */
 function startApp() {
   login.style.display = "none";
   app.style.display = "block";
 
   db.collection("users").doc(nick).set({ online: true });
 
-  db.collection("users").onSnapshot(renderUsers);
+  db.collection("users").onSnapshot(snap => {
+    lastUsers = snap;
+    renderUsers();
+  });
+
   listenForCalls();
 }
 
-/* USERS LIST */
-let lastSnapshot = null;
-
-function renderUsers(snapshot) {
-  if (snapshot) lastSnapshot = snapshot;
-  if (!lastSnapshot) return;
-
-  const filter = search.value.toLowerCase();
+/* USERS */
+function renderUsers() {
+  if (!lastUsers) return;
   users.innerHTML = "";
+  const filter = search.value.toLowerCase();
 
-  lastSnapshot.forEach(doc => {
+  lastUsers.forEach(doc => {
     if (doc.id !== nick && doc.id.toLowerCase().includes(filter)) {
       users.innerHTML += `
-        <div class="user" onclick="callUser('${doc.id}')">
-          ${doc.id}
-        </div>`;
+        <div class="user" onclick="callUser('${doc.id}')">${doc.id}</div>
+      `;
     }
   });
 }
 
 /* CALL */
 async function callUser(target) {
-  showCallUI(target);
+  showCall(target);
 
-  pc = createPeer();
+  pc = new RTCPeerConnection({
+    iceServers: [{ urls: "stun:stun.l.google.com:19302" }]
+  });
 
   localStream = await navigator.mediaDevices.getUserMedia({ audio: true });
   localStream.getTracks().forEach(t => pc.addTrack(t, localStream));
 
+  pc.ontrack = e => remoteVideo.srcObject = e.streams[0];
+
   const callDoc = db.collection("calls").doc();
-  currentCall = callDoc;
 
   pc.onicecandidate = e => {
-    if (e.candidate) {
+    if (e.candidate)
       callDoc.collection("caller").add(e.candidate.toJSON());
-    }
-  };
-
-  pc.ontrack = e => {
-    remoteVideo.srcObject = e.streams[0];
   };
 
   const offer = await pc.createOffer();
   await pc.setLocalDescription(offer);
 
-  await callDoc.set({
-    from: nick,
-    to: target,
-    offer
+  await callDoc.set({ from: nick, to: target, offer });
+
+  callDoc.onSnapshot(d => {
+    if (d.data()?.answer)
+      pc.setRemoteDescription(d.data().answer);
   });
 
-  callDoc.onSnapshot(doc => {
-    const data = doc.data();
-    if (data && data.answer && !pc.currentRemoteDescription) {
-      pc.setRemoteDescription(data.answer);
-    }
-  });
-
-  callDoc.collection("callee").onSnapshot(snapshot => {
-    snapshot.docChanges().forEach(change => {
-      if (change.type === "added") {
-        pc.addIceCandidate(new RTCIceCandidate(change.doc.data()));
-      }
-    });
+  callDoc.collection("callee").onSnapshot(s => {
+    s.docChanges().forEach(c =>
+      pc.addIceCandidate(new RTCIceCandidate(c.doc.data()))
+    );
   });
 }
 
 function listenForCalls() {
   db.collection("calls").where("to", "==", nick)
-    .onSnapshot(snapshot => {
-      snapshot.docChanges().forEach(async change => {
-        if (change.type !== "added") return;
+    .onSnapshot(snap => {
+      snap.docChanges().forEach(async c => {
+        const data = c.doc.data();
+        showCall(data.from);
 
-        const data = change.doc.data();
-        showCallUI(data.from);
+        pc = new RTCPeerConnection({
+          iceServers: [{ urls: "stun:stun.l.google.com:19302" }]
+        });
 
-        pc = createPeer();
         localStream = await navigator.mediaDevices.getUserMedia({ audio: true });
         localStream.getTracks().forEach(t => pc.addTrack(t, localStream));
 
         pc.ontrack = e => remoteVideo.srcObject = e.streams[0];
 
         pc.onicecandidate = e => {
-          if (e.candidate) {
-            change.doc.ref.collection("callee").add(e.candidate.toJSON());
-          }
+          if (e.candidate)
+            c.doc.ref.collection("callee").add(e.candidate.toJSON());
         };
 
         await pc.setRemoteDescription(data.offer);
         const answer = await pc.createAnswer();
         await pc.setLocalDescription(answer);
-        await change.doc.ref.update({ answer });
+        await c.doc.ref.update({ answer });
 
-        change.doc.ref.collection("caller").onSnapshot(snap => {
-          snap.docChanges().forEach(c => {
-            pc.addIceCandidate(new RTCIceCandidate(c.doc.data()));
-          });
-        });
+        c.doc.ref.collection("caller").onSnapshot(s =>
+          s.docChanges().forEach(i =>
+            pc.addIceCandidate(new RTCIceCandidate(i.doc.data()))
+          )
+        );
       });
     });
 }
 
-/* UI */
-function showCallUI(other) {
+function showCall(other) {
   app.style.display = "none";
   call.style.display = "flex";
   callTitle.innerText = "Rozmowa z " + other;
 }
 
-/* CONTROLS */
-function toggleMic() {
-  if (!localStream) return;
-  localStream.getAudioTracks()[0].enabled =
-    !localStream.getAudioTracks()[0].enabled;
-}
-
-async function toggleCam() {
-  if (!camStream) {
-    camStream = await navigator.mediaDevices.getUserMedia({ video: true });
-    camStream.getTracks().forEach(t => pc.addTrack(t, camStream));
-    localVideo.srcObject = camStream;
-  } else {
-    camStream.getTracks().forEach(t => t.stop());
-    camStream = null;
-    localVideo.srcObject = null;
-  }
-}
-
 function hangup() {
   if (pc) pc.close();
   location.reload();
-}
-
-/* PEER */
-function createPeer() {
-  return new RTCPeerConnection({
-    iceServers: [{ urls: "stun:stun.l.google.com:19302" }]
-  });
 }
 </script>
 </body>
