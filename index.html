@@ -298,7 +298,7 @@
             };
 
             if (peerId) {
-                config.id = peerId;
+                return new Peer(peerId, config);
             }
 
             return new Peer(config);
