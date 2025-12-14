@@ -545,6 +545,8 @@
         let peer = null;
         let currentCall = null;
         let localStream = null;
+        let processedStream = null;
+        let audioContext = null;
         let isMicEnabled = true;
         let isCamEnabled = true;
         let isLocalMain = false;
@@ -588,9 +590,50 @@
             try {
                 const stream = await navigator.mediaDevices.getUserMedia({ 
                     video: true, 
-                    audio: true 
+                    audio: {
+                        echoCancellation: true,
+                        noiseSuppression: true,
+                        autoGainControl: true
+                    }
                 });
-                return stream;
+                
+                // Tworzymy dodatkowe przetwarzanie audio
+                audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                const source = audioContext.createMediaStreamSource(stream);
+                
+                // Kompressor - redukuje głośne dźwięki i wzmacnia ciche
+                const compressor = audioContext.createDynamicsCompressor();
+                compressor.threshold.value = -50;
+                compressor.knee.value = 40;
+                compressor.ratio.value = 12;
+                compressor.attack.value = 0;
+                compressor.release.value = 0.25;
+                
+                // High-pass filter - usuwa niskie częstotliwości (szum)
+                const highPassFilter = audioContext.createBiquadFilter();
+                highPassFilter.type = 'highpass';
+                highPassFilter.frequency.value = 100;
+                
+                // Low-pass filter - usuwa wysokie częstotliwości (syk)
+                const lowPassFilter = audioContext.createBiquadFilter();
+                lowPassFilter.type = 'lowpass';
+                lowPassFilter.frequency.value = 8000;
+                
+                // Łączymy wszystko w łańcuch
+                source.connect(highPassFilter);
+                highPassFilter.connect(lowPassFilter);
+                lowPassFilter.connect(compressor);
+                
+                const destination = audioContext.createMediaStreamDestination();
+                compressor.connect(destination);
+                
+                // Tworzymy nowy stream z przetworzonymi audio i oryginalnym video
+                const videoTrack = stream.getVideoTracks()[0];
+                const processedAudioTrack = destination.stream.getAudioTracks()[0];
+                
+                processedStream = new MediaStream([videoTrack, processedAudioTrack]);
+                
+                return processedStream;
             } catch (err) {
                 showStatus('Brak dostępu do kamery/mikrofonu', 'connecting');
                 throw err;
@@ -664,9 +707,9 @@
         }
 
         toggleMicBtn.addEventListener('click', () => {
-            if (localStream) {
+            if (processedStream) {
                 isMicEnabled = !isMicEnabled;
-                localStream.getAudioTracks().forEach(track => {
+                processedStream.getAudioTracks().forEach(track => {
                     track.enabled = isMicEnabled;
                 });
                 toggleMicBtn.classList.toggle('active', !isMicEnabled);
@@ -675,9 +718,9 @@
         });
 
         toggleCamBtn.addEventListener('click', () => {
-            if (localStream) {
+            if (processedStream) {
                 isCamEnabled = !isCamEnabled;
-                localStream.getVideoTracks().forEach(track => {
+                processedStream.getVideoTracks().forEach(track => {
                     track.enabled = isCamEnabled;
                 });
                 toggleCamBtn.classList.toggle('active', !isCamEnabled);
@@ -763,7 +806,7 @@
 
                 peer.on('call', (call) => {
                     currentCall = call;
-                    call.answer(localStream);
+                    call.answer(processedStream || localStream);
                     
                     call.on('stream', (remoteStream) => {
                         remoteVideo.srcObject = remoteStream;
@@ -820,7 +863,7 @@
                     setupDataConnection(conn);
 
                     setTimeout(() => {
-                        const call = peer.call(roomId, localStream);
+                        const call = peer.call(roomId, processedStream || localStream);
                         
                         if (!call) {
                             showStatus('Pokój nie istnieje', 'connecting');
@@ -889,6 +932,12 @@
             if (localStream) {
                 localStream.getTracks().forEach(track => track.stop());
             }
+            if (processedStream) {
+                processedStream.getTracks().forEach(track => track.stop());
+            }
+            if (audioContext) {
+                audioContext.close();
+            }
             
             localVideo.srcObject = null;
             remoteVideo.srcObject = null;
@@ -899,6 +948,8 @@
             peer = null;
             currentCall = null;
             localStream = null;
+            processedStream = null;
+            audioContext = null;
             dataConnection = null;
             isMicEnabled = true;
             isCamEnabled = true;
