@@ -1,0 +1,278 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+<meta charset="UTF-8">
+<title>Połącz się</title>
+
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+
+<style>
+body {
+  margin: 0;
+  background: #0f0f0f;
+  color: #fff;
+  font-family: Arial, sans-serif;
+}
+#login, #app, #call {
+  display: none;
+  height: 100vh;
+}
+#login {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+input, button {
+  padding: 10px;
+  margin: 5px;
+  background: #222;
+  color: #fff;
+  border: none;
+}
+#top {
+  padding: 10px;
+  background: #181818;
+}
+#users .user {
+  padding: 10px;
+  cursor: pointer;
+}
+#users .user:hover {
+  background: #222;
+}
+#call {
+  position: fixed;
+  inset: 0;
+  background: #000;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+video {
+  width: 200px;
+  margin: 5px;
+  background: #000;
+}
+.controls button {
+  font-size: 18px;
+}
+</style>
+</head>
+<body>
+
+<!-- LOGIN -->
+<div id="login">
+  <div>
+    <h2>Wpisz nick</h2>
+    <input id="nickInput" autocomplete="off">
+    <button onclick="saveNick()">OK</button>
+  </div>
+</div>
+
+<!-- APP -->
+<div id="app">
+  <div id="top">
+    <input id="search" placeholder="Szukaj użytkownika" oninput="renderUsers()">
+  </div>
+  <div id="users"></div>
+</div>
+
+<!-- CALL -->
+<div id="call">
+  <h2 id="callTitle"></h2>
+  <video id="remoteVideo" autoplay></video>
+  <video id="localVideo" autoplay muted></video>
+  <div class="controls">
+    <button onclick="toggleMic()">🎙</button>
+    <button onclick="toggleCam()">🎥</button>
+    <button onclick="hangup()">❌</button>
+  </div>
+</div>
+
+<script>
+/* 🔥 FIREBASE CONFIG – TWÓJ */
+const firebaseConfig = {
+  apiKey: "AIzaSyD8maHB4twE8dSWnoLOgsd8FcQFMbqIUzY",
+  authDomain: "polacz-sie.firebaseapp.com",
+  projectId: "polacz-sie",
+  storageBucket: "polacz-sie.firebasestorage.app",
+  messagingSenderId: "756629905088",
+  appId: "1:756629905088:web:895b85e6907fee29edd725",
+  measurementId: "G-NDQFJT98QQ"
+};
+
+firebase.initializeApp(firebaseConfig);
+const db = firebase.firestore();
+
+/* GLOBALS */
+let nick = localStorage.getItem("nick");
+let pc, localStream, camStream;
+let currentCall = null;
+
+/* START */
+if (!nick) {
+  login.style.display = "flex";
+} else {
+  startApp();
+}
+
+function saveNick() {
+  nick = nickInput.value.trim();
+  if (!nick) return;
+  localStorage.setItem("nick", nick);
+  startApp();
+}
+
+function startApp() {
+  login.style.display = "none";
+  app.style.display = "block";
+
+  db.collection("users").doc(nick).set({ online: true });
+
+  db.collection("users").onSnapshot(renderUsers);
+  listenForCalls();
+}
+
+/* USERS LIST */
+let lastSnapshot = null;
+
+function renderUsers(snapshot) {
+  if (snapshot) lastSnapshot = snapshot;
+  if (!lastSnapshot) return;
+
+  const filter = search.value.toLowerCase();
+  users.innerHTML = "";
+
+  lastSnapshot.forEach(doc => {
+    if (doc.id !== nick && doc.id.toLowerCase().includes(filter)) {
+      users.innerHTML += `
+        <div class="user" onclick="callUser('${doc.id}')">
+          ${doc.id}
+        </div>`;
+    }
+  });
+}
+
+/* CALL */
+async function callUser(target) {
+  showCallUI(target);
+
+  pc = createPeer();
+
+  localStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+  localStream.getTracks().forEach(t => pc.addTrack(t, localStream));
+
+  const callDoc = db.collection("calls").doc();
+  currentCall = callDoc;
+
+  pc.onicecandidate = e => {
+    if (e.candidate) {
+      callDoc.collection("caller").add(e.candidate.toJSON());
+    }
+  };
+
+  pc.ontrack = e => {
+    remoteVideo.srcObject = e.streams[0];
+  };
+
+  const offer = await pc.createOffer();
+  await pc.setLocalDescription(offer);
+
+  await callDoc.set({
+    from: nick,
+    to: target,
+    offer
+  });
+
+  callDoc.onSnapshot(doc => {
+    const data = doc.data();
+    if (data && data.answer && !pc.currentRemoteDescription) {
+      pc.setRemoteDescription(data.answer);
+    }
+  });
+
+  callDoc.collection("callee").onSnapshot(snapshot => {
+    snapshot.docChanges().forEach(change => {
+      if (change.type === "added") {
+        pc.addIceCandidate(new RTCIceCandidate(change.doc.data()));
+      }
+    });
+  });
+}
+
+function listenForCalls() {
+  db.collection("calls").where("to", "==", nick)
+    .onSnapshot(snapshot => {
+      snapshot.docChanges().forEach(async change => {
+        if (change.type !== "added") return;
+
+        const data = change.doc.data();
+        showCallUI(data.from);
+
+        pc = createPeer();
+        localStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        localStream.getTracks().forEach(t => pc.addTrack(t, localStream));
+
+        pc.ontrack = e => remoteVideo.srcObject = e.streams[0];
+
+        pc.onicecandidate = e => {
+          if (e.candidate) {
+            change.doc.ref.collection("callee").add(e.candidate.toJSON());
+          }
+        };
+
+        await pc.setRemoteDescription(data.offer);
+        const answer = await pc.createAnswer();
+        await pc.setLocalDescription(answer);
+        await change.doc.ref.update({ answer });
+
+        change.doc.ref.collection("caller").onSnapshot(snap => {
+          snap.docChanges().forEach(c => {
+            pc.addIceCandidate(new RTCIceCandidate(c.doc.data()));
+          });
+        });
+      });
+    });
+}
+
+/* UI */
+function showCallUI(other) {
+  app.style.display = "none";
+  call.style.display = "flex";
+  callTitle.innerText = "Rozmowa z " + other;
+}
+
+/* CONTROLS */
+function toggleMic() {
+  if (!localStream) return;
+  localStream.getAudioTracks()[0].enabled =
+    !localStream.getAudioTracks()[0].enabled;
+}
+
+async function toggleCam() {
+  if (!camStream) {
+    camStream = await navigator.mediaDevices.getUserMedia({ video: true });
+    camStream.getTracks().forEach(t => pc.addTrack(t, camStream));
+    localVideo.srcObject = camStream;
+  } else {
+    camStream.getTracks().forEach(t => t.stop());
+    camStream = null;
+    localVideo.srcObject = null;
+  }
+}
+
+function hangup() {
+  if (pc) pc.close();
+  location.reload();
+}
+
+/* PEER */
+function createPeer() {
+  return new RTCPeerConnection({
+    iceServers: [{ urls: "stun:stun.l.google.com:19302" }]
+  });
+}
+</script>
+</body>
+</html>
